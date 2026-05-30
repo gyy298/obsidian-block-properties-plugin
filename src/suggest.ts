@@ -5,13 +5,13 @@ import {
 	EditorSuggestContext,
 	EditorSuggestTriggerInfo,
 	TFile,
-} from 'obsidian';
-import type BlockPropertiesPlugin from './main';
-import {parseBlockProperties} from './parser';
-import type {PropertyTemplate} from './types';
+} from "obsidian";
+import type BlockPropertiesPlugin from "./main";
+import { parseBlockProperties } from "./parser";
+import type { PropertyTemplate } from "./types";
 
 interface Suggestion {
-	type: 'key' | 'value' | 'template' | 'note-link' | 'block-ref';
+	type: "key" | "value" | "template" | "note-link" | "block-ref";
 	text: string;
 	count: number;
 	template?: PropertyTemplate;
@@ -23,6 +23,7 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 	private cachedKeys: Map<string, number> = new Map();
 	private cachedValues: Map<string, Map<string, number>> = new Map();
 	private cachedBlockIds: Map<string, string> = new Map(); // blockId -> filePath
+	private cachedBlockContent: Map<string, string> = new Map(); // blockId -> content preview
 	private lastCacheUpdate = 0;
 	private readonly CACHE_TTL = 30000; // 30 seconds
 
@@ -34,7 +35,7 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 	onTrigger(
 		cursor: EditorPosition,
 		editor: Editor,
-		file: TFile | null
+		file: TFile | null,
 	): EditorSuggestTriggerInfo | null {
 		const line = editor.getLine(cursor.line);
 
@@ -43,20 +44,20 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 		const afterCursor = line.slice(cursor.ch);
 
 		// Find the last [ before cursor
-		const bracketStart = beforeCursor.lastIndexOf('[');
+		const bracketStart = beforeCursor.lastIndexOf("[");
 		if (bracketStart === -1) return null;
 
 		// Make sure there's no ] between [ and cursor
 		const textInBracket = beforeCursor.slice(bracketStart + 1);
-		if (textInBracket.includes(']')) return null;
+		if (textInBracket.includes("]")) return null;
 
 		// Make sure this is a block property (has ^id before [)
 		const beforeBracket = line.slice(0, bracketStart);
 		if (!beforeBracket.match(/\^[\w-]+\s*$/)) return null;
 
 		// Determine if we're typing a key or value
-		const lastComma = textInBracket.lastIndexOf(',');
-		const lastColon = textInBracket.lastIndexOf(':');
+		const lastComma = textInBracket.lastIndexOf(",");
+		const lastColon = textInBracket.lastIndexOf(":");
 
 		let start: number;
 		let query: string;
@@ -68,13 +69,14 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 		} else {
 			// We're typing a key (after comma or at start)
 			start = bracketStart + 1 + (lastComma === -1 ? 0 : lastComma + 1);
-			query = lastComma === -1
-				? textInBracket.trim()
-				: textInBracket.slice(lastComma + 1).trim();
+			query =
+				lastComma === -1
+					? textInBracket.trim()
+					: textInBracket.slice(lastComma + 1).trim();
 		}
 
 		return {
-			start: {line: cursor.line, ch: start},
+			start: { line: cursor.line, ch: start },
 			end: cursor,
 			query,
 		};
@@ -85,11 +87,11 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 
 		const line = context.editor.getLine(context.start.line);
 		const beforeCursor = line.slice(0, context.end.ch);
-		const bracketStart = beforeCursor.lastIndexOf('[');
+		const bracketStart = beforeCursor.lastIndexOf("[");
 		const textInBracket = beforeCursor.slice(bracketStart + 1);
 
-		const lastComma = textInBracket.lastIndexOf(',');
-		const lastColon = textInBracket.lastIndexOf(':');
+		const lastComma = textInBracket.lastIndexOf(",");
+		const lastColon = textInBracket.lastIndexOf(":");
 
 		const query = context.query.toLowerCase();
 
@@ -102,22 +104,22 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 			// Check for link context within value
 			const linkContext = this.detectLinkContext(valueText);
 
-			if (linkContext?.type === 'note') {
+			if (linkContext?.type === "note") {
 				// Suggest notes for [[
 				return this.getNoteSuggestions(linkContext.query);
 			}
 
-			if (linkContext?.type === 'block') {
+			if (linkContext?.type === "block") {
 				// Suggest block IDs for ^
 				return this.getBlockSuggestions(linkContext.query);
 			}
 
 			// If the key is "preset", suggest template names
-			if (currentKey === 'preset') {
+			if (currentKey === "preset") {
 				return this.plugin.settings.templates
 					.filter((t) => t.name.toLowerCase().includes(query))
 					.map((t) => ({
-						type: 'template' as const,
+						type: "template" as const,
 						text: t.name,
 						count: t.properties.length,
 						template: t,
@@ -127,26 +129,30 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 			const values = this.cachedValues.get(currentKey) || new Map();
 			return Array.from(values.entries())
 				.filter(([value]) => value.toLowerCase().includes(query))
-				.map(([text, count]) => ({type: 'value' as const, text, count}))
+				.map(([text, count]) => ({
+					type: "value" as const,
+					text,
+					count,
+				}))
 				.sort((a, b) => b.count - a.count)
 				.slice(0, 10);
 		} else {
 			// Suggest keys
 			const suggestions = Array.from(this.cachedKeys.entries())
 				.filter(([key]) => key.toLowerCase().includes(query))
-				.map(([text, count]) => ({type: 'key' as const, text, count}))
+				.map(([text, count]) => ({ type: "key" as const, text, count }))
 				.sort((a, b) => b.count - a.count)
 				.slice(0, 10);
 
 			// Add "preset" as a special key if it matches and templates exist
 			if (
-				'preset'.includes(query) &&
+				"preset".includes(query) &&
 				this.plugin.settings.templates.length > 0 &&
-				!suggestions.find((s) => s.text === 'preset')
+				!suggestions.find((s) => s.text === "preset")
 			) {
 				suggestions.unshift({
-					type: 'key' as const,
-					text: 'preset',
+					type: "key" as const,
+					text: "preset",
 					count: this.plugin.settings.templates.length,
 				});
 			}
@@ -155,24 +161,26 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 		}
 	}
 
-	private detectLinkContext(text: string): {type: 'note' | 'block'; query: string} | null {
+	private detectLinkContext(
+		text: string,
+	): { type: "note" | "block"; query: string } | null {
 		// Check if we're inside an unclosed [[ for note links
-		const lastDoubleBracket = text.lastIndexOf('[[');
+		const lastDoubleBracket = text.lastIndexOf("[[");
 		if (lastDoubleBracket !== -1) {
 			const afterBracket = text.slice(lastDoubleBracket + 2);
 			// Make sure it's not closed
-			if (!afterBracket.includes(']]')) {
-				return {type: 'note', query: afterBracket.trim()};
+			if (!afterBracket.includes("]]")) {
+				return { type: "note", query: afterBracket.trim() };
 			}
 		}
 
 		// Check if we're after ^ for block references
-		const lastCaret = text.lastIndexOf('^');
+		const lastCaret = text.lastIndexOf("^");
 		if (lastCaret !== -1) {
 			const afterCaret = text.slice(lastCaret + 1);
 			// Only suggest if it looks like a block ID being typed (word chars)
 			if (/^[\w-]*$/.test(afterCaret)) {
-				return {type: 'block', query: afterCaret};
+				return { type: "block", query: afterCaret };
 			}
 		}
 
@@ -187,7 +195,7 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 			.filter((f) => f.basename.toLowerCase().includes(lowerQuery))
 			.slice(0, 10)
 			.map((f) => ({
-				type: 'note-link' as const,
+				type: "note-link" as const,
 				text: f.basename,
 				count: 0,
 				filePath: f.path,
@@ -202,9 +210,10 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 			.slice(0, 10)
 			.map(([blockId, filePath]) => {
 				const file = this.app.vault.getAbstractFileByPath(filePath);
-				const fileName = file instanceof TFile ? file.basename : filePath;
+				const fileName =
+					file instanceof TFile ? file.basename : filePath;
 				return {
-					type: 'block-ref' as const,
+					type: "block-ref" as const,
 					text: blockId,
 					count: 0,
 					filePath: fileName,
@@ -213,96 +222,117 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 	}
 
 	renderSuggestion(suggestion: Suggestion, el: HTMLElement): void {
-		el.addClass('block-properties-suggestion');
+		el.addClass("block-properties-suggestion");
 
-		el.createEl('span', {
+		el.createEl("span", {
 			text: suggestion.text,
-			cls: 'block-properties-suggestion-text',
+			cls: "block-properties-suggestion-text",
 		});
 
-		const meta = el.createEl('span', {
-			cls: 'block-properties-suggestion-meta',
+		const meta = el.createEl("span", {
+			cls: "block-properties-suggestion-meta",
 		});
 
 		let typeLabel: string;
 		switch (suggestion.type) {
-			case 'template':
-				typeLabel = 'template';
+			case "template":
+				typeLabel = "template";
 				break;
-			case 'key':
-				typeLabel = 'key';
+			case "key":
+				typeLabel = "key";
 				break;
-			case 'note-link':
-				typeLabel = 'note';
+			case "note-link":
+				typeLabel = "note";
 				break;
-			case 'block-ref':
-				typeLabel = 'block';
+			case "block-ref":
+				typeLabel = "block";
 				break;
 			default:
-				typeLabel = 'value';
+				typeLabel = "value";
 		}
 
-		meta.createEl('span', {
+		meta.createEl("span", {
 			text: typeLabel,
 			cls: `block-properties-suggestion-type block-properties-suggestion-type-${suggestion.type}`,
 		});
 
 		// Show count for regular suggestions, file path for links
-		if (suggestion.type === 'note-link' || suggestion.type === 'block-ref') {
+		if (
+			suggestion.type === "note-link" ||
+			suggestion.type === "block-ref"
+		) {
 			if (suggestion.filePath) {
-				meta.createEl('span', {
+				meta.createEl("span", {
 					text: suggestion.filePath,
-					cls: 'block-properties-suggestion-path',
+					cls: "block-properties-suggestion-path",
 				});
 			}
 		} else {
-			meta.createEl('span', {
+			meta.createEl("span", {
 				text: `${suggestion.count}`,
-				cls: 'block-properties-suggestion-count',
+				cls: "block-properties-suggestion-count",
 			});
 		}
 
+		// Show block content preview for block references
+		if (suggestion.type === "block-ref") {
+			const content = this.cachedBlockContent.get(suggestion.text);
+			if (content) {
+				const preview =
+					content.length > 50
+						? content.slice(0, 50) + "\u2026"
+						: content;
+				el.createEl("div", {
+					text: preview,
+					cls: "block-properties-suggestion-preview",
+				});
+			}
+		}
+
 		// Show template preview
-		if (suggestion.type === 'template' && suggestion.template) {
-			el.createEl('div', {
+		if (suggestion.type === "template" && suggestion.template) {
+			el.createEl("div", {
 				text: suggestion.template.properties
-					.map((p) => `${p.key}: ${p.value || '...'}`)
-					.join(', '),
-				cls: 'block-properties-suggestion-preview',
+					.map((p) => `${p.key}: ${p.value || "..."}`)
+					.join(", "),
+				cls: "block-properties-suggestion-preview",
 			});
 		}
 	}
 
-	selectSuggestion(suggestion: Suggestion, evt: MouseEvent | KeyboardEvent): void {
+	selectSuggestion(
+		suggestion: Suggestion,
+		evt: MouseEvent | KeyboardEvent,
+	): void {
 		if (!this.context) return;
 
-		const {editor, start, end} = this.context;
+		const { editor, start, end } = this.context;
 		const line = editor.getLine(start.line);
 
 		// Handle template expansion
 		if (
-			suggestion.type === 'template' &&
+			suggestion.type === "template" &&
 			suggestion.template &&
 			this.plugin.settings.autoExpandPresets
 		) {
 			// Find the bracket start to replace the entire property block
-			const bracketStart = line.lastIndexOf('[', start.ch);
-			const bracketEnd = line.indexOf(']', end.ch);
+			const bracketStart = line.lastIndexOf("[", start.ch);
+			const bracketEnd = line.indexOf("]", end.ch);
 
 			if (bracketStart !== -1 && bracketEnd !== -1) {
 				const propsStr = suggestion.template.properties
 					.map((p) => `${p.key}: ${p.value}`)
-					.join(', ');
+					.join(", ");
 
 				editor.replaceRange(
 					`[${propsStr}]`,
-					{line: start.line, ch: bracketStart},
-					{line: start.line, ch: bracketEnd + 1}
+					{ line: start.line, ch: bracketStart },
+					{ line: start.line, ch: bracketEnd + 1 },
 				);
 
 				// Move cursor to end
 				const newCh = bracketStart + propsStr.length + 2;
-				editor.setCursor({line: start.line, ch: newCh});
+				editor.setCursor({ line: start.line, ch: newCh });
 				return;
 			}
 		}
@@ -310,22 +340,22 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 		let replacement = suggestion.text;
 		let adjustStart = start;
 
-		if (suggestion.type === 'key') {
-			replacement = suggestion.text + ': ';
-		} else if (suggestion.type === 'note-link') {
+		if (suggestion.type === "key") {
+			replacement = suggestion.text + ": ";
+		} else if (suggestion.type === "note-link") {
 			// Replace from [[ to cursor
 			const beforeCursor = line.slice(0, end.ch);
-			const bracketPos = beforeCursor.lastIndexOf('[[');
+			const bracketPos = beforeCursor.lastIndexOf("[[");
 			if (bracketPos !== -1) {
-				adjustStart = {line: start.line, ch: bracketPos};
+				adjustStart = { line: start.line, ch: bracketPos };
 				replacement = `[[${suggestion.text}]]`;
 			}
-		} else if (suggestion.type === 'block-ref') {
+		} else if (suggestion.type === "block-ref") {
 			// Replace from ^ to cursor
 			const beforeCursor = line.slice(0, end.ch);
-			const caretPos = beforeCursor.lastIndexOf('^');
+			const caretPos = beforeCursor.lastIndexOf("^");
 			if (caretPos !== -1) {
-				adjustStart = {line: start.line, ch: caretPos};
+				adjustStart = { line: start.line, ch: caretPos };
 				replacement = `^${suggestion.text}`;
 			}
 		}
@@ -334,7 +364,7 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 
 		// Move cursor after the replacement
 		const newCh = adjustStart.ch + replacement.length;
-		editor.setCursor({line: start.line, ch: newCh});
+		editor.setCursor({ line: start.line, ch: newCh });
 	}
 
 	private async updateCache() {
@@ -346,13 +376,14 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 		this.cachedKeys.clear();
 		this.cachedValues.clear();
 		this.cachedBlockIds.clear();
+		this.cachedBlockContent.clear();
 
 		const files = this.app.vault.getMarkdownFiles();
 
 		for (const file of files) {
 			try {
 				const content = await this.app.vault.cachedRead(file);
-				const lines = content.split('\n');
+				const lines = content.split("\n");
 
 				for (const line of lines) {
 					const props = parseBlockProperties(line);
@@ -361,13 +392,26 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 						// Cache block ID (first occurrence wins)
 						if (!this.cachedBlockIds.has(prop.blockId)) {
 							this.cachedBlockIds.set(prop.blockId, file.path);
+							// Cache block content (line text minus annotation)
+							const blockContent = line
+								.replace(
+									/\s*\^[\w-]+(?:\s*\[[^\]]*\])?\s*$/,
+									"",
+								)
+								.trim();
+							if (blockContent) {
+								this.cachedBlockContent.set(
+									prop.blockId,
+									blockContent,
+								);
+							}
 						}
 
 						for (const p of prop.properties) {
 							// Count keys
 							this.cachedKeys.set(
 								p.key,
-								(this.cachedKeys.get(p.key) || 0) + 1
+								(this.cachedKeys.get(p.key) || 0) + 1,
 							);
 
 							// Count values per key
@@ -375,16 +419,30 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 								this.cachedValues.set(p.key, new Map());
 							}
 							const valueMap = this.cachedValues.get(p.key)!;
-							valueMap.set(p.value, (valueMap.get(p.value) || 0) + 1);
+							valueMap.set(
+								p.value,
+								(valueMap.get(p.value) || 0) + 1,
+							);
 						}
 					}
 
 					// Also find standalone block IDs (without properties)
-					const standaloneBlockIds = line.matchAll(/\^([\w-]+)(?!\s*\[)/g);
+					const standaloneBlockIds =
+						line.matchAll(/\^([\w-]+)(?!\s*\[)/g);
 					for (const match of standaloneBlockIds) {
 						const blockId = match[1];
 						if (blockId && !this.cachedBlockIds.has(blockId)) {
 							this.cachedBlockIds.set(blockId, file.path);
+							// Cache block content (line text minus ^id)
+							const blockContent = line
+								.replace(/\s*\^[\w-]+\s*$/, "")
+								.trim();
+							if (blockContent) {
+								this.cachedBlockContent.set(
+									blockId,
+									blockContent,
+								);
+							}
 						}
 					}
 				}
@@ -394,6 +452,28 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 		}
 
 		this.lastCacheUpdate = now;
+	}
+
+	getCachedBlockIds(): Set<string> {
+		return new Set(this.cachedBlockIds.keys());
+	}
+
+	/** Returns all cached blocks that have resolved text content. */
+	getCachedBlocks(): Array<{
+		blockId: string;
+		content: string;
+		filePath: string;
+	}> {
+		const result: Array<{
+			blockId: string;
+			content: string;
+			filePath: string;
+		}> = [];
+		for (const [blockId, filePath] of this.cachedBlockIds) {
+			const content = this.cachedBlockContent.get(blockId) ?? "";
+			result.push({ blockId, content, filePath });
+		}
+		return result;
 	}
 
 	getKeys(): Map<string, number> {

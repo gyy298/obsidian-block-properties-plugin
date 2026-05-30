@@ -1,4 +1,4 @@
-import {Extension, RangeSetBuilder} from '@codemirror/state';
+import { Extension, RangeSetBuilder } from "@codemirror/state";
 import {
 	Decoration,
 	DecorationSet,
@@ -9,33 +9,38 @@ import {
 	ViewPlugin,
 	ViewUpdate,
 	WidgetType,
-} from '@codemirror/view';
-import {App} from 'obsidian';
-import {parseBlockProperties} from './parser';
-import {getLinkPositions} from './link-parser';
-import {navigateToLink} from './link-resolver';
-import {getConditionalClasses} from './conditional-styles';
-import type {BlockPropertiesSettings, DisplayMode, ParsedLink} from './types';
+} from "@codemirror/view";
+import { App } from "obsidian";
+import { parseBlockProperties } from "./parser";
+import { getLinkPositions } from "./link-parser";
+import { navigateToLink, getBlockContent } from "./link-resolver";
+import { getConditionalClasses } from "./conditional-styles";
+import type { BlockPropertiesSettings, DisplayMode, ParsedLink } from "./types";
 
 class BadgeWidget extends WidgetType {
 	constructor(
 		private blockId: string,
-		private properties: {key: string; value: string}[],
-		private conditionalClasses: string[] = []
+		private properties: { key: string; value: string }[],
+		private conditionalClasses: string[] = [],
 	) {
 		super();
 	}
 
 	toDOM() {
-		const badge = document.createElement('span');
-		badge.className = ['block-property-badge', ...this.conditionalClasses].join(' ');
-		badge.setAttribute('data-block-id', this.blockId);
-		badge.setAttribute('data-properties', JSON.stringify(this.properties));
+		const badge = document.createElement("span");
+		badge.className = [
+			"block-property-badge",
+			...this.conditionalClasses,
+		].join(" ");
+		badge.setAttribute("data-block-id", this.blockId);
+		badge.setAttribute("data-properties", JSON.stringify(this.properties));
 
 		// Show property count
 		const count = this.properties.length;
 		badge.textContent = `${count}`;
-		badge.title = this.properties.map((p) => `${p.key}: ${p.value}`).join(', ');
+		badge.title = this.properties
+			.map((p) => `${p.key}: ${p.value}`)
+			.join(", ");
 
 		return badge;
 	}
@@ -43,13 +48,18 @@ class BadgeWidget extends WidgetType {
 	eq(other: BadgeWidget) {
 		return (
 			this.blockId === other.blockId &&
-			JSON.stringify(this.properties) === JSON.stringify(other.properties) &&
-			JSON.stringify(this.conditionalClasses) === JSON.stringify(other.conditionalClasses)
+			JSON.stringify(this.properties) ===
+				JSON.stringify(other.properties) &&
+			JSON.stringify(this.conditionalClasses) ===
+				JSON.stringify(other.conditionalClasses)
 		);
 	}
 }
 
-function createViewPlugin(displayMode: DisplayMode, settings: BlockPropertiesSettings) {
+function createViewPlugin(
+	displayMode: DisplayMode,
+	settings: BlockPropertiesSettings,
+) {
 	class BlockPropertiesViewPlugin implements PluginValue {
 		decorations: DecorationSet;
 
@@ -68,50 +78,76 @@ function createViewPlugin(displayMode: DisplayMode, settings: BlockPropertiesSet
 		private buildDecorations(view: EditorView): DecorationSet {
 			const builder = new RangeSetBuilder<Decoration>();
 			// Collect decorations to sort later (CodeMirror requires sorted ranges)
-			const decorations: {from: number; to: number; decoration: Decoration}[] = [];
+			const decorations: {
+				from: number;
+				to: number;
+				decoration: Decoration;
+			}[] = [];
 
-			for (const {from, to} of view.visibleRanges) {
+			for (const { from, to } of view.visibleRanges) {
 				const text = view.state.doc.sliceString(from, to);
 				const blockProps = parseBlockProperties(text, from);
 
 				for (const prop of blockProps) {
-					const fullText = view.state.doc.sliceString(prop.from, prop.to);
-					const bracketStart = fullText.indexOf('[');
+					const fullText = view.state.doc.sliceString(
+						prop.from,
+						prop.to,
+					);
+					const bracketStart = fullText.indexOf("[");
 
 					if (bracketStart !== -1) {
 						const decorFrom = prop.from + bracketStart;
 						const decorTo = prop.to;
 
 						// Get conditional classes
-						const conditionalClasses = getConditionalClasses(prop.properties, settings);
+						const conditionalClasses = getConditionalClasses(
+							prop.properties,
+							settings,
+						);
 
 						// Add line decoration if styling target is 'line'
-						if (settings.enableConditionalStyling && settings.stylingTarget === 'line' && conditionalClasses.length > 0) {
+						if (
+							settings.enableConditionalStyling &&
+							settings.stylingTarget === "line" &&
+							conditionalClasses.length > 0
+						) {
 							const line = view.state.doc.lineAt(prop.from);
 							decorations.push({
 								from: line.from,
 								to: line.from,
 								decoration: Decoration.line({
-									class: ['bp-styled-line', ...conditionalClasses].join(' ')
-								})
+									class: [
+										"bp-styled-line",
+										...conditionalClasses,
+									].join(" "),
+								}),
 							});
 						}
 
-						if (displayMode === 'badge') {
+						if (displayMode === "badge") {
 							// Replace with badge widget
-							const widget = new BadgeWidget(prop.blockId, prop.properties, conditionalClasses);
+							const widget = new BadgeWidget(
+								prop.blockId,
+								prop.properties,
+								conditionalClasses,
+							);
 							decorations.push({
 								from: decorFrom,
 								to: decorTo,
-								decoration: Decoration.replace({widget})
+								decoration: Decoration.replace({ widget }),
 							});
 						} else {
 							// Inline mode - style the text with conditional classes
-							const classes = ['block-property', ...conditionalClasses];
+							const classes = [
+								"block-property",
+								...conditionalClasses,
+							];
 							decorations.push({
 								from: decorFrom,
 								to: decorTo,
-								decoration: Decoration.mark({class: classes.join(' ')})
+								decoration: Decoration.mark({
+									class: classes.join(" "),
+								}),
 							});
 						}
 					}
@@ -134,70 +170,139 @@ function createViewPlugin(displayMode: DisplayMode, settings: BlockPropertiesSet
 	});
 }
 
-const blockPropertiesTooltip = hoverTooltip(
-	(view: EditorView, pos: number): Tooltip | null => {
-		const line = view.state.doc.lineAt(pos);
-		const lineText = line.text;
-		const lineStart = line.from;
+function createBlockPropertiesTooltip(app?: App) {
+	return hoverTooltip(
+		async (view: EditorView, pos: number): Promise<Tooltip | null> => {
+			const line = view.state.doc.lineAt(pos);
+			const lineText = line.text;
+			const lineStart = line.from;
 
-		const blockProps = parseBlockProperties(lineText, lineStart);
+			const blockProps = parseBlockProperties(lineText, lineStart);
 
-		for (const prop of blockProps) {
-			const fullText = view.state.doc.sliceString(prop.from, prop.to);
-			const bracketStart = fullText.indexOf('[');
+			for (const prop of blockProps) {
+				const fullText = view.state.doc.sliceString(prop.from, prop.to);
+				const bracketStart = fullText.indexOf("[");
 
-			if (bracketStart !== -1) {
-				const tooltipFrom = prop.from + bracketStart;
-				const tooltipTo = prop.to;
+				if (bracketStart !== -1) {
+					const tooltipFrom = prop.from + bracketStart;
+					const tooltipTo = prop.to;
 
-				if (pos >= tooltipFrom && pos <= tooltipTo) {
-					return {
-						pos: tooltipFrom,
-						above: true,
-						create() {
-							const dom = document.createElement('div');
-							dom.className = 'block-properties-tooltip';
+					if (pos >= tooltipFrom && pos <= tooltipTo) {
+						// Pre-resolve block references so content is available in create()
+						const resolvedContent = new Map<string, string>();
 
-							const header = document.createElement('div');
-							header.className = 'block-properties-tooltip-header';
-							header.textContent = `^${prop.blockId}`;
-							dom.appendChild(header);
-
-							const list = document.createElement('div');
-							list.className = 'block-properties-tooltip-list';
-
+						if (app) {
+							const activeFile =
+								app.workspace.getActiveFile() || undefined;
 							for (const p of prop.properties) {
-								const item = document.createElement('div');
-								item.className = 'block-properties-tooltip-item';
-
-								const key = document.createElement('span');
-								key.className = 'block-properties-tooltip-key';
-								key.textContent = p.key;
-
-								const value = document.createElement('span');
-								value.className = 'block-properties-tooltip-value';
-								value.textContent = p.value;
-
-								item.appendChild(key);
-								item.appendChild(value);
-								list.appendChild(item);
+								const linkPos = getLinkPositions(p.value);
+								for (const lp of linkPos) {
+									if (
+										lp.link.type === "block" &&
+										!resolvedContent.has(lp.link.target)
+									) {
+										try {
+											const content =
+												await getBlockContent(
+													app,
+													lp.link.target,
+													activeFile,
+												);
+											if (content) {
+												resolvedContent.set(
+													lp.link.target,
+													content,
+												);
+											}
+										} catch {
+											// ignore resolution errors
+										}
+									}
+								}
 							}
+						}
 
-							dom.appendChild(list);
-							return {dom};
-						},
-					};
+						return {
+							pos: tooltipFrom,
+							above: true,
+							create() {
+								const dom = document.createElement("div");
+								dom.className = "block-properties-tooltip";
+
+								const header = document.createElement("div");
+								header.className =
+									"block-properties-tooltip-header";
+								header.textContent = `^${prop.blockId}`;
+								dom.appendChild(header);
+
+								const list = document.createElement("div");
+								list.className =
+									"block-properties-tooltip-list";
+
+								for (const p of prop.properties) {
+									const item = document.createElement("div");
+									item.className =
+										"block-properties-tooltip-item";
+
+									const key = document.createElement("span");
+									key.className =
+										"block-properties-tooltip-key";
+									key.textContent = p.key;
+
+									const value =
+										document.createElement("span");
+									value.className =
+										"block-properties-tooltip-value";
+
+									// Replace block ref IDs with resolved content in display
+									if (resolvedContent.size > 0) {
+										let displayValue = p.value;
+										for (const [
+											blockId,
+											content,
+										] of resolvedContent) {
+											const preview =
+												content.length > 40
+													? content.slice(0, 40) +
+														"\u2026"
+													: content;
+											displayValue = displayValue.replace(
+												new RegExp(
+													`\\^${blockId}(?![\\w-])`,
+													"g",
+												),
+												preview,
+											);
+										}
+										value.textContent = displayValue;
+										if (displayValue !== p.value) {
+											value.title = p.value; // original value as native tooltip
+										}
+									} else {
+										value.textContent = p.value;
+									}
+
+									item.appendChild(key);
+									item.appendChild(value);
+									list.appendChild(item);
+								}
+
+								dom.appendChild(list);
+								return { dom };
+							},
+						};
+					}
 				}
 			}
-		}
 
-		return null;
-	}
-);
+			return null;
+		},
+	);
+}
 
 // Link decoration for clickable links inside properties
 const linkDecoration = Decoration.mark({
-	class: 'block-property-link',
+	class: "block-property-link",
 });
 
 // Store link positions for click handling
@@ -240,19 +345,25 @@ function createLinkViewPlugin() {
 			const builder = new RangeSetBuilder<Decoration>();
 			const positions: LinkPosition[] = [];
 
-			for (const {from, to} of view.visibleRanges) {
+			for (const { from, to } of view.visibleRanges) {
 				const text = view.state.doc.sliceString(from, to);
 				const blockProps = parseBlockProperties(text, from);
 
 				for (const prop of blockProps) {
-					const fullText = view.state.doc.sliceString(prop.from, prop.to);
-					const bracketStart = fullText.indexOf('[');
-					const bracketEnd = fullText.lastIndexOf(']');
+					const fullText = view.state.doc.sliceString(
+						prop.from,
+						prop.to,
+					);
+					const bracketStart = fullText.indexOf("[");
+					const bracketEnd = fullText.lastIndexOf("]");
 
 					if (bracketStart === -1 || bracketEnd === -1) continue;
 
 					// Get the properties string content (between brackets)
-					const propsContent = fullText.slice(bracketStart + 1, bracketEnd);
+					const propsContent = fullText.slice(
+						bracketStart + 1,
+						bracketEnd,
+					);
 					const propsStartPos = prop.from + bracketStart + 1;
 
 					// Find links in each property value
@@ -260,7 +371,10 @@ function createLinkViewPlugin() {
 					for (const p of prop.properties) {
 						// Find position of this key-value pair in propsContent
 						const pairStr = `${p.key}: ${p.value}`;
-						const pairIndex = propsContent.indexOf(pairStr, currentOffset);
+						const pairIndex = propsContent.indexOf(
+							pairStr,
+							currentOffset,
+						);
 						if (pairIndex === -1) continue;
 
 						const valueStart = pairIndex + p.key.length + 2; // +2 for ": "
@@ -272,7 +386,11 @@ function createLinkViewPlugin() {
 							const absoluteFrom = valueAbsStart + lp.from;
 							const absoluteTo = valueAbsStart + lp.to;
 
-							builder.add(absoluteFrom, absoluteTo, linkDecoration);
+							builder.add(
+								absoluteFrom,
+								absoluteTo,
+								linkDecoration,
+							);
 							positions.push({
 								from: absoluteFrom,
 								to: absoluteTo,
@@ -303,7 +421,10 @@ function createLinkClickHandler(app: App) {
 			// Check for Cmd (Mac) or Ctrl (Windows/Linux)
 			if (!event.metaKey && !event.ctrlKey) return false;
 
-			const pos = view.posAtCoords({x: event.clientX, y: event.clientY});
+			const pos = view.posAtCoords({
+				x: event.clientX,
+				y: event.clientY,
+			});
 			if (pos === null) return false;
 
 			const linkPositions = linkPositionsByView.get(view);
@@ -316,9 +437,14 @@ function createLinkClickHandler(app: App) {
 
 					// Get current file path for link resolution
 					const activeFile = app.workspace.getActiveFile();
-					const sourcePath = activeFile?.path || '';
+					const sourcePath = activeFile?.path || "";
 
-					navigateToLink(app, lp.link, sourcePath, activeFile || undefined);
+					navigateToLink(
+						app,
+						lp.link,
+						sourcePath,
+						activeFile || undefined,
+					);
 					return true;
 				}
 			}
@@ -331,11 +457,11 @@ function createLinkClickHandler(app: App) {
 export function createBlockPropertiesExtension(
 	displayMode: DisplayMode,
 	settings: BlockPropertiesSettings,
-	app?: App
+	app?: App,
 ) {
 	const extensions: Extension[] = [
 		createViewPlugin(displayMode, settings),
-		blockPropertiesTooltip,
+		createBlockPropertiesTooltip(app),
 	];
 
 	// Add link decorations and click handler if app is provided

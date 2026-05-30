@@ -1,5 +1,5 @@
-import {App, TFile} from 'obsidian';
-import {ParsedLink} from './types';
+import { App, TFile } from "obsidian";
+import { ParsedLink } from "./types";
 
 export interface ResolvedLink {
 	file: TFile | null;
@@ -14,7 +14,7 @@ export interface ResolvedLink {
 export function resolveNoteLink(
 	app: App,
 	linkText: string,
-	sourcePath: string
+	sourcePath: string,
 ): ResolvedLink {
 	const file = app.metadataCache.getFirstLinkpathDest(linkText, sourcePath);
 	return {
@@ -31,14 +31,19 @@ export async function resolveBlockRef(
 	app: App,
 	blockId: string,
 	currentFile?: TFile,
-	searchVault = true
+	searchVault = true,
 ): Promise<ResolvedLink> {
 	// Search current file first
 	if (currentFile) {
 		const content = await app.vault.cachedRead(currentFile);
 		const lineIndex = findBlockInContent(content, blockId);
 		if (lineIndex !== -1) {
-			return {file: currentFile, blockId, line: lineIndex, exists: true};
+			return {
+				file: currentFile,
+				blockId,
+				line: lineIndex,
+				exists: true,
+			};
 		}
 	}
 
@@ -49,19 +54,19 @@ export async function resolveBlockRef(
 			const content = await app.vault.cachedRead(file);
 			const lineIndex = findBlockInContent(content, blockId);
 			if (lineIndex !== -1) {
-				return {file, blockId, line: lineIndex, exists: true};
+				return { file, blockId, line: lineIndex, exists: true };
 			}
 		}
 	}
 
-	return {file: null, exists: false};
+	return { file: null, exists: false };
 }
 
 /**
  * Find a block ID in content and return its line number (0-indexed)
  */
 function findBlockInContent(content: string, blockId: string): number {
-	const lines = content.split('\n');
+	const lines = content.split("\n");
 	const pattern = new RegExp(`\\^${blockId}(?:\\s|\\[|$)`);
 
 	for (let i = 0; i < lines.length; i++) {
@@ -80,16 +85,16 @@ export async function navigateToLink(
 	app: App,
 	link: ParsedLink,
 	sourcePath: string,
-	currentFile?: TFile
+	currentFile?: TFile,
 ): Promise<boolean> {
-	if (link.type === 'note') {
+	if (link.type === "note") {
 		const resolved = resolveNoteLink(app, link.target, sourcePath);
 		if (resolved.file) {
 			const leaf = app.workspace.getLeaf();
 			await leaf.openFile(resolved.file);
 			return true;
 		}
-	} else if (link.type === 'block') {
+	} else if (link.type === "block") {
 		const resolved = await resolveBlockRef(app, link.target, currentFile);
 		if (resolved.file && resolved.line !== undefined) {
 			const leaf = app.workspace.getLeaf();
@@ -97,16 +102,19 @@ export async function navigateToLink(
 
 			// Scroll to line
 			const view = leaf.view;
-			if (view.getViewType() === 'markdown') {
+			if (view.getViewType() === "markdown") {
 				// Use setTimeout to ensure file is loaded
 				setTimeout(() => {
 					const editor = (view as any).editor;
 					if (editor) {
-						editor.setCursor({line: resolved.line!, ch: 0});
-						editor.scrollIntoView({
-							from: {line: resolved.line!, ch: 0},
-							to: {line: resolved.line!, ch: 0},
-						}, true);
+						editor.setCursor({ line: resolved.line!, ch: 0 });
+						editor.scrollIntoView(
+							{
+								from: { line: resolved.line!, ch: 0 },
+								to: { line: resolved.line!, ch: 0 },
+							},
+							true,
+						);
 					}
 				}, 100);
 			}
@@ -118,11 +126,36 @@ export async function navigateToLink(
 }
 
 /**
+ * Get the text content of a referenced block (line text without block ID and properties annotation)
+ */
+export async function getBlockContent(
+	app: App,
+	blockId: string,
+	currentFile?: TFile,
+): Promise<string | null> {
+	const resolved = await resolveBlockRef(app, blockId, currentFile);
+	if (!resolved.file || resolved.line === undefined) return null;
+
+	const content = await app.vault.cachedRead(resolved.file);
+	const lines = content.split("\n");
+	const line = lines[resolved.line];
+	if (!line) return null;
+
+	// Remove block ID and optional properties annotation from end of line
+	// Matches: ^block-id [key: value, ...] or just ^block-id
+	const cleaned = line
+		.replace(/\s*\^[\w-]+(?:\s*\[[^\]]*\])?\s*$/, "")
+		.trim();
+
+	return cleaned || null;
+}
+
+/**
  * Get all block IDs from a file
  */
 export async function getBlockIdsFromFile(
 	app: App,
-	file: TFile
+	file: TFile,
 ): Promise<string[]> {
 	const content = await app.vault.cachedRead(file);
 	const blockIds: string[] = [];
