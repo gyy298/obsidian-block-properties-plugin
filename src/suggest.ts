@@ -51,9 +51,16 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 		const textInBracket = beforeCursor.slice(bracketStart + 1);
 		if (textInBracket.includes("]")) return null;
 
-		// Make sure this is a block property (has ^id before [)
+		// New format: [key: value] ^id — check that ^id appears after ] in the line
+		const closingBracket = line.indexOf("]", bracketStart);
+		const afterClose =
+			closingBracket >= 0 ? line.slice(closingBracket + 1) : "";
 		const beforeBracket = line.slice(0, bracketStart);
-		if (!beforeBracket.match(/\^[\w-]+\s*$/)) return null;
+		if (
+			!afterClose.match(/\s*\^[\w-]+/) &&
+			!beforeBracket.match(/\^[\w-]+\s*$/)
+		)
+			return null;
 
 		// Determine if we're typing a key or value
 		const lastComma = textInBracket.lastIndexOf(",");
@@ -395,7 +402,7 @@ export class BlockPropertiesSuggest extends EditorSuggest<Suggestion> {
 							// Cache block content (line text minus annotation)
 							const blockContent = line
 								.replace(
-									/\s*\^[\w-]+(?:\s*\[[^\]]*\])?\s*$/,
+									/\s*(?:\[[^\]]*\]\s*)?\^[\w-]+\s*$/,
 									"",
 								)
 								.trim();

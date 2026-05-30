@@ -721,9 +721,10 @@ export class PropertyPanelView extends ItemView {
 				.map((p) => `${p.key}: ${p.value}`)
 				.join(", ");
 
-			const beforeProps = line.slice(0, block.propsStart);
-			const afterProps = line.slice(block.propsEnd + 1);
-			const newLine = `${beforeProps}[${newPropsStr}]${afterProps}`;
+			const blockIdMatch = line.match(/\^([\w-]+)\s*$/);
+			const blockId = blockIdMatch ? blockIdMatch[1] : block.blockId;
+			const contentPart = line.slice(0, block.propsStart).trimEnd();
+			const newLine = `${contentPart} [${newPropsStr}] ^${blockId}`;
 
 			lines[block.line] = newLine;
 			await this.app.vault.modify(this.currentFile, lines.join("\n"));
@@ -758,9 +759,10 @@ export class PropertyPanelView extends ItemView {
 				.map((p) => `${p.key}: ${p.value}`)
 				.join(", ");
 
-			const beforeProps = line.slice(0, block.propsStart);
-			const afterProps = line.slice(block.propsEnd + 1);
-			const newLine = `${beforeProps}[${newPropsStr}]${afterProps}`;
+			const blockIdMatch = line.match(/\^([\w-]+)\s*$/);
+			const blockId = blockIdMatch ? blockIdMatch[1] : block.blockId;
+			const contentPart = line.slice(0, block.propsStart).trimEnd();
+			const newLine = `${contentPart} [${newPropsStr}] ^${blockId}`;
 
 			lines[block.line] = newLine;
 			await this.app.vault.modify(this.currentFile, lines.join("\n"));
@@ -785,23 +787,19 @@ export class PropertyPanelView extends ItemView {
 
 			const updatedProps = block.properties.filter((p) => p.key !== key);
 
+			const blockIdMatch = line.match(/\^([\w-]+)\s*$/);
+			const blockId = blockIdMatch ? blockIdMatch[1] : block.blockId;
+			const contentPart = line.slice(0, block.propsStart).trimEnd();
+
 			if (updatedProps.length === 0) {
 				// Remove entire block properties syntax, keep ^blockId
-				const beforeBlock = line.slice(0, block.blockStart);
-				const afterProps = line.slice(block.propsEnd + 1);
-				const blockIdMatch = line
-					.slice(block.blockStart)
-					.match(/^\^[\w-]+/);
-				const newLine = `${beforeBlock}${blockIdMatch?.[0] || ""}${afterProps}`;
+				const newLine = `${contentPart} ^${blockId}`;
 				lines[block.line] = newLine;
 			} else {
 				const newPropsStr = updatedProps
 					.map((p) => `${p.key}: ${p.value}`)
 					.join(", ");
-
-				const beforeProps = line.slice(0, block.propsStart);
-				const afterProps = line.slice(block.propsEnd + 1);
-				const newLine = `${beforeProps}[${newPropsStr}]${afterProps}`;
+				const newLine = `${contentPart} [${newPropsStr}] ^${blockId}`;
 				lines[block.line] = newLine;
 			}
 

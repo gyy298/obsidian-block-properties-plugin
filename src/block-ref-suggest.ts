@@ -113,10 +113,10 @@ export class BlockRefSuggest extends EditorSuggest<BlockRefItem> {
 		const items: BlockRefItem[] = [];
 		const seen = new Set<string>();
 
-		// Matches: <content> SPACE ^blockId [optional [...]]
-		// Group 1 = content before the block ID
+		// Matches: <content> SPACE [optional [...] SPACE] ^blockId
+		// Group 1 = content before optional [props]
 		// Group 2 = block ID
-		const LINE_RE = /^(.*?)\s+\^([\w-]+)(?:\s*\[[^\]]*\])?\s*$/;
+		const LINE_RE = /^(.*?)\s+(?:\[[^\]]*\]\s*)?\^([\w-]+)\s*$/;
 
 		const files = this.app.vault.getMarkdownFiles();
 

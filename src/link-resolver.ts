@@ -67,7 +67,7 @@ export async function resolveBlockRef(
  */
 function findBlockInContent(content: string, blockId: string): number {
 	const lines = content.split("\n");
-	const pattern = new RegExp(`\\^${blockId}(?:\\s|\\[|$)`);
+	const pattern = new RegExp(`\\^${blockId}\\s*$`);
 
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
@@ -141,10 +141,10 @@ export async function getBlockContent(
 	const line = lines[resolved.line];
 	if (!line) return null;
 
-	// Remove block ID and optional properties annotation from end of line
-	// Matches: ^block-id [key: value, ...] or just ^block-id
+	// Remove optional properties annotation and block ID from end of line
+	// Matches: [key: value, ...] ^block-id or just ^block-id
 	const cleaned = line
-		.replace(/\s*\^[\w-]+(?:\s*\[[^\]]*\])?\s*$/, "")
+		.replace(/\s*(?:\[[^\]]*\]\s*)?\^[\w-]+\s*$/, "")
 		.trim();
 
 	return cleaned || null;

@@ -104,25 +104,26 @@ export default class BlockPropertiesPlugin extends Plugin {
 
 				// Check if line already has a block ID
 				if (line.includes("^")) {
-					// Try to add properties to existing block ID
-					const match = line.match(/\^([\w-]+)(?:\s*\[([^\]]*)\])?/);
-					if (match) {
-						const blockId = match[1];
-						const existingProps = match[2] || "";
+					// New format: [props] ^id or just ^id at end of line
+					const match = line.match(
+						/(?:\[([^\]]*)\]\s*)?\^([\w-]+)\s*$/,
+					);
+					if (match && match.index !== undefined) {
+						const existingProps = match[1] || "";
+						const blockId = match[2];
 						const newProps = existingProps
 							? `${existingProps}, key: value`
 							: "key: value";
-						const replacement = `^${blockId} [${newProps}]`;
-						const from = line.indexOf("^");
+						const replacement = `[${newProps}] ^${blockId}`;
 						editor.replaceRange(
 							replacement,
-							{ line: cursor.line, ch: from },
+							{ line: cursor.line, ch: match.index },
 							{ line: cursor.line, ch: line.length },
 						);
 					}
 				} else {
 					// Insert new block ID with properties at end of line
-					const insertion = " ^block-id [key: value]";
+					const insertion = " [key: value] ^block-id";
 					editor.replaceRange(insertion, {
 						line: cursor.line,
 						ch: line.length,
@@ -148,7 +149,7 @@ export default class BlockPropertiesPlugin extends Plugin {
 							.map((p) => `${p.key}: ${p.value}`)
 							.join(", ");
 
-						const insertion = ` ^${blockId} [${propsStr}]`;
+						const insertion = ` [${propsStr}] ^${blockId}`;
 
 						editor.replaceRange(insertion, {
 							line: cursor.line,

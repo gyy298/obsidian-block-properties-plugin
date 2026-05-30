@@ -1,12 +1,15 @@
-import {BlockProperties, BlockProperty} from './types';
-import {parseLinksInValue} from './link-parser';
+import { BlockProperties, BlockProperty } from "./types";
+import { parseLinksInValue } from "./link-parser";
 
-// Matches: ^block-id [key: value, key2: value2]
-// Group 1: block-id
-// Group 2: properties string
-const BLOCK_PROPS_REGEX = /\^([\w-]+)\s*\[([^\]]+)\]/g;
+// Matches: [key: value, key2: value2] ^block-id
+// Group 1: properties string
+// Group 2: block-id
+const BLOCK_PROPS_REGEX = /\[([^\]]+)\]\s*\^([\w-]+)/g;
 
-export function parseBlockProperties(text: string, offset = 0): BlockProperties[] {
+export function parseBlockProperties(
+	text: string,
+	offset = 0,
+): BlockProperties[] {
 	const results: BlockProperties[] = [];
 	let match: RegExpExecArray | null;
 
@@ -14,8 +17,8 @@ export function parseBlockProperties(text: string, offset = 0): BlockProperties[
 	BLOCK_PROPS_REGEX.lastIndex = 0;
 
 	while ((match = BLOCK_PROPS_REGEX.exec(text)) !== null) {
-		const blockId = match[1];
-		const propsString = match[2];
+		const blockId = match[2];
+		const propsString = match[1];
 
 		if (!blockId || !propsString) continue;
 
@@ -34,10 +37,10 @@ export function parseBlockProperties(text: string, offset = 0): BlockProperties[
 
 function parsePropertiesString(propsString: string): BlockProperty[] {
 	const properties: BlockProperty[] = [];
-	const pairs = propsString.split(',');
+	const pairs = propsString.split(",");
 
 	for (const pair of pairs) {
-		const colonIndex = pair.indexOf(':');
+		const colonIndex = pair.indexOf(":");
 		if (colonIndex === -1) continue;
 
 		const key = pair.slice(0, colonIndex).trim();
@@ -45,7 +48,7 @@ function parsePropertiesString(propsString: string): BlockProperty[] {
 
 		if (key) {
 			const parsedValue = parseLinksInValue(value);
-			properties.push({key, value, parsedValue});
+			properties.push({ key, value, parsedValue });
 		}
 	}
 
@@ -53,15 +56,19 @@ function parsePropertiesString(propsString: string): BlockProperty[] {
 }
 
 // Find the range of just the properties part [...]
-export function getPropertiesRange(text: string, offset = 0): {from: number; to: number} | null {
+export function getPropertiesRange(
+	text: string,
+	offset = 0,
+): { from: number; to: number } | null {
 	BLOCK_PROPS_REGEX.lastIndex = 0;
 	const match = BLOCK_PROPS_REGEX.exec(text);
 
 	if (!match) return null;
 
-	const bracketStart = match[0].indexOf('[');
-	const from = offset + match.index + bracketStart;
-	const to = offset + match.index + match[0].length;
+	// match[0] is "[props] ^id" — return only the bracket range
+	const bracketEnd = match[0].indexOf("]") + 1;
+	const from = offset + match.index;
+	const to = offset + match.index + bracketEnd;
 
-	return {from, to};
+	return { from, to };
 }
